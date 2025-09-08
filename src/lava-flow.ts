@@ -218,7 +218,7 @@ export default class LavaFlow {
       ) as JournalEntry) ??
       (await LavaFlow.createJournal(journalName, parentFolder, settings.playerObserve));
 
-    const fileContent = await LavaFlow.getFileContent(file);
+    const fileContent = await LavaFlow.getFileContent(file, settings);
 
     // @ts-expect-error
     let journalPage: JournalEntryPage = journal.pages.find((p: JournalEntryPage) => p.name === pageName) ?? null;
@@ -362,11 +362,24 @@ export default class LavaFlow {
     await page.update({ text: { markdown: content } });
   }
 
-  static async getFileContent(file: FileInfo): Promise<string> {
+  static async getFileContent(file: FileInfo, settings?: LavaFlowSettings): Promise<string> {
     let originalText = await file.originalFile.text();
+
+    // strip YAML frontmatter (unchanged)
     if (originalText !== null && originalText.length > 6)
-      originalText = originalText.replace(/^---\r?\n([^-].*\r?\n)+---(\r?\n)+/, '');
+      originalText = originalText.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/, '');
+
+    // strip %%...%% only if enabled
+    if (settings?.stripObsidianComments) {
+      console.log("Stripping Obsidian comments from file content.");
+      originalText = originalText.replace(/\%\%[\s\S]*?\%\%/g, '');
+    } else {
+      console.log("Not stripping Obsidian comments from file content.");
+    }
+
+    // keep your existing heading tweak
     originalText = originalText.replace(/^#[0-9A-Za-z]+\b/gm, ' $&');
+
     return originalText;
   }
 
