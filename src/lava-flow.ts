@@ -218,17 +218,26 @@ export default class LavaFlow {
       ) as JournalEntry) ??
       (await LavaFlow.createJournal(journalName, parentFolder, settings.playerObserve));
 
-    const fileContent = await LavaFlow.getFileContent(file, settings);
+    const { body, isPublic } = await LavaFlow.parseFrontmatterAndBody(file, settings);
 
     // @ts-expect-error
     let journalPage: JournalEntryPage = journal.pages.find((p: JournalEntryPage) => p.name === pageName) ?? null;
 
-    if (journalPage !== null && settings.overwrite) await LavaFlow.updateJournalPage(journalPage, fileContent);
+    if (journalPage !== null && settings.overwrite) await LavaFlow.updateJournalPage(journalPage, body);
     else if (journalPage === null || (!settings.overwrite && !settings.ignoreDuplicate))
-      journalPage = await LavaFlow.createJournalPage(pageName, fileContent, journal);
+      journalPage = await LavaFlow.createJournalPage(pageName, body, journal);
+
+    // (Avoid flipping an entire combined-journal when combineNotes is on and parentJournal was provided.)
+    if (isPublic && parentJournal === null) {
+      await journal.update({
+        // @ts-expect-error
+        ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }
+      });
+    }
 
     file.journalPage = journalPage;
   }
+
 
   static async importOtherFile(file: OtherFileInfo, settings: LavaFlowSettings): Promise<void> {
     const source = settings.useS3 ? 's3' : 'data';
@@ -362,25 +371,50 @@ export default class LavaFlow {
     await page.update({ text: { markdown: content } });
   }
 
-  static async getFileContent(file: FileInfo, settings?: LavaFlowSettings): Promise<string> {
-    let originalText = await file.originalFile.text();
+  static async parseFrontmatterAndBody(
+    file: FileInfo,
+    settings?: LavaFlowSettings
+  ): Promise<{ body: string; isPublic: boolean; frontmatter: Record<string, any> }> {
+    let raw = await file.originalFile.text();
 
-    // strip YAML frontmatter (unchanged)
-    if (originalText !== null && originalText.length > 6)
-      originalText = originalText.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/, '');
+    // Grab YAML frontmatter block if present
+    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/);
+    let frontmatter: Record<string, any> = {};
+    let isPublic = false;
 
-    // strip %%...%% only if enabled
+    if (fmMatch) {
+      const yaml = fmMatch[1];
+      // super-lightweight YAML-ish parse to avoid extra deps
+      yaml.split(/\r?\n/).forEach((line) => {
+        const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*)\s*$/);
+        if (!m) return;
+        const key = m[1].toLowerCase();
+        let val: any = m[2].trim();
+        if (/^true$/i.test(val)) val = true;
+        else if (/^false$/i.test(val)) val = false;
+        else if (/^['"].*['"]$/.test(val)) val = val.slice(1, -1);
+        frontmatter[key] = val;
+      });
+
+      isPublic = frontmatter['public'] === true || String(frontmatter['visibility']).toLowerCase() === 'public';
+    }
+
+    // Now produce the body exactly like your current logic
+    // strip YAML frontmatter
+    let body = raw.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/, '');
+
+    // optionally strip %%...%% comments
     if (settings?.stripObsidianComments) {
-      console.log("Stripping Obsidian comments from file content.");
-      originalText = originalText.replace(/\%\%[\s\S]*?\%\%/g, '');
+      console.log('Stripping Obsidian comments from file content.');
+      body = body.replace(/\%\%[\s\S]*?\%\%/g, '');
     } else {
-      console.log("Not stripping Obsidian comments from file content.");
+      console.log('Not stripping Obsidian comments from file content.');
     }
 
     // keep your existing heading tweak
-    originalText = originalText.replace(/^#[0-9A-Za-z]+\b/gm, ' $&');
+    body = body.replace(/^#[0-9A-Za-z]+\b/gm, ' $&');
 
-    return originalText;
+    return { body, isPublic, frontmatter };
   }
 
   // @ts-expect-error
