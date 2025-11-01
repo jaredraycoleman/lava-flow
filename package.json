@@ -1,7 +1,7 @@
 {
   "name": "lava-flow-jrayc",
   "title": "Lava Flow (jrayc fork)",
-  "version": "4.1.3",
+  "version": "4.1.4",
   "description": "A module for importing Obsidian MD vaults into Foundry VTT as journal entries. Fork with enhanced features.",
   "devDir": "/mnt/c/Users/jared/AppData/Local/FoundryVTT/Data/modules/lava-flow-jrayc/",
   "main": "src/index.ts",
