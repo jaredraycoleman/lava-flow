@@ -7,6 +7,9 @@
   "authors": [
     {
       "name": "Chase Burke"
+    },
+    {
+      "name": "jrayc (fork maintainer)"
     }
   ],
   "compatibility": {
@@ -17,10 +20,10 @@
   "esmodules": "{{sources}}",
   "styles": "{{css}}",
   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
-  "url": "https://github.com/Praxxian/lava-flow",
-  "license": "https://github.com/Praxxian/lava-flow/LICENSE",
-  "manifest": "https://github.com/Praxxian/lava-flow/releases/download/{{version}}/module.json",
-  "download": "https://github.com/Praxxian/lava-flow/releases/download/{{version}}/lava-flow.zip",
-  "readme": "https://github.com/Praxxian/lava-flow/README.md",
-  "changelog": "https://github.com/Praxxian/lava-flow/CHANGELOG.md"
+  "url": "https://github.com/jrayc/lava-flow-jrayc",
+  "license": "https://github.com/jrayc/lava-flow-jrayc/LICENSE",
+  "manifest": "https://github.com/jrayc/lava-flow-jrayc/releases/download/{{version}}/module.json",
+  "download": "https://github.com/jrayc/lava-flow-jrayc/releases/download/{{version}}/lava-flow-jrayc.zip",
+  "readme": "https://github.com/jrayc/lava-flow-jrayc/README.md",
+  "changelog": "https://github.com/jrayc/lava-flow-jrayc/CHANGELOG.md"
 }

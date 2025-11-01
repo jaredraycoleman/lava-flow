@@ -6,7 +6,7 @@ export class LavaFlowSettings {
   imageDirectory: string | null = null;
   overwrite: boolean = true;
   ignoreDuplicate: boolean = false;
-  idPrefix: string = `${LavaFlow.ID}-`;
+  idPrefix: string = `${LavaFlow.ID}-`; // Will be 'lava-flow-jrayc-'
   playerObserve: boolean = false;
   createIndexFile: boolean = false;
   createBacklinks: boolean = true;
@@ -15,6 +15,7 @@ export class LavaFlowSettings {
   s3Bucket: string | null = null;
   s3Region: string | null = null;
   mediaFolder: string = 'img';
+  skipDuplicateImages: boolean = true;
   combineNotes = false;
   combineNotesNoSubfolders = true;
   useTinyMCE = false;

@@ -7,7 +7,7 @@ import { JournalEntryDataConstructorData } from '@league-of-foundry-developers/f
 
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class
 export default class LavaFlow {
-  static ID = 'lava-flow';
+  static ID = 'lava-flow-jrayc';
 
   static FLAGS = {
     FOLDER: 'lavaFlowFolder',
@@ -52,7 +52,7 @@ export default class LavaFlow {
     const $html = isV13 ? $(html as HTMLElement) : html;
     
     const className = `${LavaFlow.ID}-btn`;
-    const tooltip = (game as Game).i18n.localize('LAVA-FLOW.button-label');
+    const tooltip = (game as Game).i18n.localize('LAVA-FLOW-JRAYC.button-label');
     
     // Create button with v13-compatible styling
     const buttonHtml = isV13 
@@ -95,10 +95,25 @@ export default class LavaFlow {
         await LavaFlow.validateUploadLocation(settings);
       }
 
+      // Pre-scan for existing images if skip duplicates is enabled
+      let existingImagePaths: Map<string, string> = new Map();
+      let totalImages = 0;
+      let skippedImages = 0;
+
+      if (settings.importNonMarkdown && settings.skipDuplicateImages) {
+        const result = await LavaFlow.getExistingImageFiles(settings);
+        existingImagePaths = result.existingFiles;
+        LavaFlow.log(`Found ${existingImagePaths.size} existing images in ${settings.mediaFolder}`, false);
+      }
+
       const rootFoundryFolder = await createOrGetFolder(settings.rootFolderName);
 
       const rootFolder = LavaFlow.createFolderStructure(settings.vaultFiles);
-      await LavaFlow.importFolder(rootFolder, settings, rootFoundryFolder);
+
+      // Pass the existing image paths to the import process
+      const importStats = await LavaFlow.importFolder(rootFolder, settings, rootFoundryFolder, existingImagePaths);
+      totalImages = importStats.totalImages;
+      skippedImages = importStats.skippedImages;
 
       const importedFiles: FileInfo[] = rootFolder.getFilesRecursive();
 
@@ -118,6 +133,11 @@ export default class LavaFlow {
       // Update to HTML after we have done all our MD edits
       if(settings.useTinyMCE)
         await LavaFlow.ConvertAllToHTML(allJournals);
+
+      // Show summary of skipped images
+      if (settings.importNonMarkdown && settings.skipDuplicateImages && totalImages > 0) {
+        LavaFlow.log(`Skipped ${skippedImages}/${totalImages} duplicate images`, true);
+      }
 
       LavaFlow.log('Import complete.', true);
     } catch (e: any) {
@@ -155,7 +175,11 @@ export default class LavaFlow {
     folder: FolderInfo,
     settings: LavaFlowSettings,
     parentFolder: Folder | null,
-  ): Promise<void> {
+    existingImagePaths: Map<string, string> = new Map(),
+  ): Promise<{ totalImages: number; skippedImages: number }> {
+    let totalImages = 0;
+    let skippedImages = 0;
+
     const hasMDFiles = folder.files.filter((f) => f instanceof MDFileInfo).length > 0;
     const combineFiles =
       settings.combineNotes && hasMDFiles && (!settings.combineNotesNoSubfolders || folder.childFolders.length < 1);
@@ -182,12 +206,18 @@ export default class LavaFlow {
     }
 
     for (let i = 0; i < folder.files.length; i++) {
-      await this.importFile(folder.files[i], settings, parentFolder, parentJournal);
+      const stats = await this.importFile(folder.files[i], settings, parentFolder, parentJournal, existingImagePaths);
+      totalImages += stats.totalImages;
+      skippedImages += stats.skippedImages;
     }
 
     for (let i = 0; i < folder.childFolders.length; i++) {
-      await this.importFolder(folder.childFolders[i], settings, parentFolder);
+      const stats = await this.importFolder(folder.childFolders[i], settings, parentFolder, existingImagePaths);
+      totalImages += stats.totalImages;
+      skippedImages += stats.skippedImages;
     }
+
+    return { totalImages, skippedImages };
   }
 
   static async importFile(
@@ -195,12 +225,16 @@ export default class LavaFlow {
     settings: LavaFlowSettings,
     rootFolder: Folder | null,
     parentJournal: JournalEntry | null,
-  ): Promise<void> {
+    existingImagePaths: Map<string, string> = new Map(),
+  ): Promise<{ totalImages: number; skippedImages: number }> {
     if (file instanceof MDFileInfo) {
       await this.importMarkdownFile(file, settings, rootFolder, parentJournal);
+      return { totalImages: 0, skippedImages: 0 };
     } else if (settings.importNonMarkdown && file instanceof OtherFileInfo) {
-      await this.importOtherFile(file, settings);
+      const wasSkipped = await this.importOtherFile(file, settings, existingImagePaths);
+      return { totalImages: 1, skippedImages: wasSkipped ? 1 : 0 };
     }
+    return { totalImages: 0, skippedImages: 0 };
   }
 
   static async importMarkdownFile(
@@ -244,11 +278,56 @@ export default class LavaFlow {
   }
 
 
-  static async importOtherFile(file: OtherFileInfo, settings: LavaFlowSettings): Promise<void> {
+  static async importOtherFile(
+    file: OtherFileInfo,
+    settings: LavaFlowSettings,
+    existingImagePaths: Map<string, string> = new Map(),
+  ): Promise<boolean> {
     const source = settings.useS3 ? 's3' : 'data';
     const body = settings.useS3 ? { bucket: settings.s3Bucket } : {};
+
+    // Check if file already exists in pre-scanned map
+    if (settings.skipDuplicateImages && existingImagePaths.has(file.originalFile.name)) {
+      file.uploadPath = existingImagePaths.get(file.originalFile.name)!;
+      LavaFlow.log(`Skipping duplicate image: ${file.originalFile.name}`, false);
+      return true; // Skipped
+    }
+
+    // Log if we're uploading (helps debug filename matching issues)
+    if (settings.skipDuplicateImages) {
+      LavaFlow.log(`Uploading new image: ${file.originalFile.name}`, false);
+    }
+
+    // Upload the file
     const uploadResponse: any = await FilePicker.upload(source, settings.mediaFolder, file.originalFile, body);
     if (uploadResponse?.path) file.uploadPath = decodeURI(uploadResponse.path);
+    return false; // Not skipped
+  }
+
+  static async getExistingImageFiles(settings: LavaFlowSettings): Promise<{ existingFiles: Map<string, string> }> {
+    const existingFiles = new Map<string, string>();
+    const source = settings.useS3 ? 's3' : 'data';
+    const body = settings.useS3 && settings.s3Bucket ? { bucket: settings.s3Bucket } : {};
+
+    try {
+      const browseResult: any = await FilePicker.browse(source, settings.mediaFolder, body);
+
+      if (browseResult?.files) {
+        for (const filePath of browseResult.files) {
+          const fileName = filePath.split('/').pop();
+          if (fileName) {
+            // Decode the filename to handle spaces and special characters
+            const decodedFileName = decodeURIComponent(fileName);
+            existingFiles.set(decodedFileName, decodeURI(filePath));
+          }
+        }
+      }
+    } catch (error: any) {
+      // If browse fails, folder might not exist yet - that's okay
+      LavaFlow.log(`Could not scan for existing images in ${settings.mediaFolder}: ${error.message}`, false);
+    }
+
+    return { existingFiles };
   }
 
   static async validateUploadLocation(settings: LavaFlowSettings): Promise<void> {
@@ -261,7 +340,6 @@ export default class LavaFlow {
       } catch (error: any) {
         LavaFlow.log(`Error accessing filepath ${settings.mediaFolder}: ${error.message}`, false);
       }
-
       await FilePicker.createDirectory('data', settings.mediaFolder);
     }
   }

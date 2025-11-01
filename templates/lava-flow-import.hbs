@@ -86,6 +86,11 @@
             <input type='text' name="mediaFolder" placeholder="images/lavaflow" value="{{mediaFolder}}" />
         </div>
 
+        <div class="form-group" title="Skip uploading image files that already exist at the destination (much faster for re-imports).">
+            <label>Skip duplicate image uploads? <i class="far fa-question-circle"></i></label>
+            <input type="checkbox" name="skipDuplicateImages" id="{{idPrefix}}skipDuplicateImages" {{#if skipDuplicateImages}}checked{{/if}}>
+        </div>
+
         <div class="form-group" title="Non-markdown files will be uploaded to S3.">
             <label>Use S3 for non-markdown files? <i class="far fa-question-circle"></i></label>
             <input type="checkbox" name="useS3" id="{{idPrefix}}useS3" {{#if useS3}}checked{{/if}}>
