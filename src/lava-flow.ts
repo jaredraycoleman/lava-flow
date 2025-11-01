@@ -233,6 +233,11 @@ export default class LavaFlow {
         // @ts-expect-error
         ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }
       });
+    } else if (!isPublic && parentJournal === null) {
+      await journal.update({
+        // @ts-expect-error
+        ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE }
+      });
     }
 
     file.journalPage = journalPage;
@@ -383,18 +388,22 @@ export default class LavaFlow {
     let isPublic = false;
 
     if (fmMatch) {
-      const yaml = fmMatch[1];
-      // super-lightweight YAML-ish parse to avoid extra deps
-      yaml.split(/\r?\n/).forEach((line) => {
-        const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*)\s*$/);
-        if (!m) return;
-        const key = m[1].toLowerCase();
-        let val: any = m[2].trim();
-        if (/^true$/i.test(val)) val = true;
-        else if (/^false$/i.test(val)) val = false;
-        else if (/^['"].*['"]$/.test(val)) val = val.slice(1, -1);
-        frontmatter[key] = val;
-      });
+      try {
+        const yaml = fmMatch[1];
+        // super-lightweight YAML-ish parse to avoid extra deps
+        yaml.split(/\r?\n/).forEach((line) => {
+          const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*)\s*$/);
+          if (!m) return;
+          const key = m[1].toLowerCase();
+          let val: any = m[2].trim();
+          if (/^true$/i.test(val.toLowerCase())) val = true;
+          else if (/^false$/i.test(val.toLowerCase())) val = false;
+          else if (/^['"].*['"]$/.test(val)) val = val.slice(1, -1);
+          frontmatter[key] = val;
+        });
+      } catch (e) {
+        console.warn(`Lava Flow | Error parsing YAML frontmatter in file ${file.originalFile.name}: ${e}`);
+      }
 
       isPublic = frontmatter['public'] === true || String(frontmatter['visibility']).toLowerCase() === 'public';
     }
