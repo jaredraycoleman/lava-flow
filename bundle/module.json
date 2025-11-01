@@ -1,25 +1,29 @@
 {
-  "name": "lava-flow",
-  "id": "lava-flow",
-  "title": "Lava Flow",
-  "description": "A module for importing Obsidian MD vaults into Foundry VTT as journal entries.",
-  "version": "4.1.0",
+  "name": "lava-flow-jrayc",
+  "id": "lava-flow-jrayc",
+  "title": "Lava Flow (jrayc fork)",
+  "description": "A module for importing Obsidian MD vaults into Foundry VTT as journal entries. Fork with enhanced features.",
+  "version": "4.1.1",
   "authors": [
     {
       "name": "Chase Burke"
+    },
+    {
+      "name": "jrayc (fork maintainer)"
     }
   ],
   "compatibility": {
     "minimum": "12",
-    "verified": "12"
+    "verified": "13.347",
+    "maximum": "13"
   },
   "esmodules": ["src/index.js"],
   "styles": ["css/lava-flow.css"],
   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
-  "url": "https://github.com/Praxxian/lava-flow",
-  "license": "https://github.com/Praxxian/lava-flow/LICENSE",
-  "manifest": "https://github.com/Praxxian/lava-flow/releases/download/4.1.0/module.json",
-  "download": "https://github.com/Praxxian/lava-flow/releases/download/4.1.0/lava-flow.zip",
-  "readme": "https://github.com/Praxxian/lava-flow/README.md",
-  "changelog": "https://github.com/Praxxian/lava-flow/CHANGELOG.md"
+  "url": "https://github.com/jrayc/lava-flow-jrayc",
+  "license": "https://github.com/jrayc/lava-flow-jrayc/LICENSE",
+  "manifest": "https://github.com/jrayc/lava-flow-jrayc/releases/latest/download/module.json",
+  "download": "https://github.com/jrayc/lava-flow-jrayc/releases/latest/download/lava-flow-jrayc.zip",
+  "readme": "https://github.com/jrayc/lava-flow-jrayc/README.md",
+  "changelog": "https://github.com/jrayc/lava-flow-jrayc/CHANGELOG.md"
 }
