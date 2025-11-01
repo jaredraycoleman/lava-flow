@@ -215,7 +215,7 @@ if ! command -v gh &> /dev/null; then
     print_info "Install it from: https://cli.github.com/"
     print_info ""
     print_info "To create the release manually:"
-    print_info "  1. Go to: https://github.com/YOUR_USERNAME/lava-flow-jrayc/releases/new"
+    print_info "  1. Go to: https://github.com/jaredraycoleman/lava-flow/releases/new"
     print_info "  2. Tag: v${NEW_VERSION}"
     print_info "  3. Upload: bundle/lava-flow-jrayc.zip and bundle/module.json"
     print_info "  4. Mark as 'Set as the latest release'"
