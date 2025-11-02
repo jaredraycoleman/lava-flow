@@ -121,7 +121,7 @@ function outputMetaFiles(output = null) {
 function compressDistribution() {
   return gulp.series(
     // Copy files to folder with module's name
-    () => gulp.src(DIST + GLOB).pipe(gulp.dest(`${DIST}${PACKAGE.name}/${PACKAGE.name}`)),
+    () => gulp.src(DIST + GLOB).pipe(gulp.dest(`${DIST}${PACKAGE.name}`)),
     // Compress the new folder into a ZIP and save it to the `bundle` folder
     () =>
       gulp

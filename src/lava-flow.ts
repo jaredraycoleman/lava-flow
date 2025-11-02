@@ -4,6 +4,7 @@ import { LavaFlowForm } from './lava-flow-form.js';
 import { LavaFlowSettings } from './lava-flow-settings.js';
 import { createOrGetFolder } from './util.js';
 import { JournalEntryDataConstructorData } from '@league-of-foundry-developers/foundry-vtt-types/src/foundry/common/data/data.mjs/journalEntryData';
+import { generateJournalUUID, generatePageUUID, documentExists } from './deterministic-uuid.js';
 
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class
 export default class LavaFlow {
@@ -41,12 +42,8 @@ export default class LavaFlow {
   static createUIElements(html: any): void {
     if (!LavaFlow.isGM()) return;
 
-    LavaFlow.log('Creating UI elements...', false);
-    
     // Use proper Foundry version detection
     const isV13 = (game as any)?.release?.generation >= 13;
-    
-    LavaFlow.log(`Detected Foundry version: ${(game as any)?.release?.generation || 'unknown'}, using v13 mode: ${isV13}`, false);
     
     // Convert HTMLElement to jQuery if needed (v13 passes HTMLElement)
     const $html = isV13 ? $(html as HTMLElement) : html;
@@ -73,8 +70,6 @@ export default class LavaFlow {
       // v12: Insert after header-actions
       $html.find('.header-actions:first-child').after(button);
     }
-    
-    LavaFlow.log('Creating UI elements complete.', false);
   }
 
   static createForm(): void {
@@ -103,7 +98,6 @@ export default class LavaFlow {
       if (settings.importNonMarkdown && settings.skipDuplicateImages) {
         const result = await LavaFlow.getExistingImageFiles(settings);
         existingImagePaths = result.existingFiles;
-        LavaFlow.log(`Found ${existingImagePaths.size} existing images in ${settings.mediaFolder}`, false);
       }
 
       const rootFoundryFolder = await createOrGetFolder(settings.rootFolderName);
@@ -134,12 +128,12 @@ export default class LavaFlow {
       if(settings.useTinyMCE)
         await LavaFlow.ConvertAllToHTML(allJournals);
 
-      // Show summary of skipped images
+      // Show completion message with summary
+      let message = 'Import complete.';
       if (settings.importNonMarkdown && settings.skipDuplicateImages && totalImages > 0) {
-        LavaFlow.log(`Skipped ${skippedImages}/${totalImages} duplicate images`, true);
+        message += ` Skipped ${skippedImages}/${totalImages} duplicate images.`;
       }
-
-      LavaFlow.log('Import complete.', true);
+      LavaFlow.log(message, true);
     } catch (e: any) {
       LavaFlow.errorHandling(e);
     }
@@ -152,8 +146,10 @@ export default class LavaFlow {
       const file = FileInfo.get(fileList[i]);
       if (file.isHidden() || file.isCanvas()) continue;
       let parentFolder = rootFolder;
-      for (let j = 0; j < file.directories.length; j++) {
-        const folderName = file.directories[j];
+      // Skip the first directory (vault root folder name) to ensure consistent IDs
+      const directoriesWithoutRoot = file.directories.length > 1 ? file.directories.slice(1) : [];
+      for (let j = 0; j < directoriesWithoutRoot.length; j++) {
+        const folderName = directoriesWithoutRoot[j];
         const matches = parentFolder.childFolders.filter((f) => f.name === folderName);
         const currentFolder = matches.length > 0 ? matches[0] : new FolderInfo(folderName);
         if (matches.length < 1) parentFolder.childFolders.push(currentFolder);
@@ -176,6 +172,7 @@ export default class LavaFlow {
     settings: LavaFlowSettings,
     parentFolder: Folder | null,
     existingImagePaths: Map<string, string> = new Map(),
+    currentPath: string[] = [],
   ): Promise<{ totalImages: number; skippedImages: number }> {
     let totalImages = 0;
     let skippedImages = 0;
@@ -192,7 +189,9 @@ export default class LavaFlow {
       folder.getFilesRecursive().filter((f) => f instanceof MDFileInfo).length > 0;
 
     if (combineFiles) {
-      parentJournal = await this.createJournal(folder.name, parentFolder, settings.playerObserve);
+      // For combined folders, use the folder path as the journal identifier
+      const folderPath = folder.name !== '' ? [...currentPath, folder.name].join('/') : currentPath.join('/');
+      parentJournal = await this.createJournal(folder.name, parentFolder, settings.playerObserve, folderPath);
     }
 
     if (
@@ -202,7 +201,7 @@ export default class LavaFlow {
           (childFolder) => childFolder.getFilesRecursive().filter((f) => f instanceof MDFileInfo).length > 0,
         ).length > 0)
     ) {
-      parentFolder = await createOrGetFolder(folder.name, parentFolder?.id);
+      parentFolder = await createOrGetFolder(folder.name, parentFolder?.id, currentPath);
     }
 
     for (let i = 0; i < folder.files.length; i++) {
@@ -212,7 +211,8 @@ export default class LavaFlow {
     }
 
     for (let i = 0; i < folder.childFolders.length; i++) {
-      const stats = await this.importFolder(folder.childFolders[i], settings, parentFolder, existingImagePaths);
+      const childPath = folder.name !== '' ? [...currentPath, folder.name] : currentPath;
+      const stats = await this.importFolder(folder.childFolders[i], settings, parentFolder, existingImagePaths, childPath);
       totalImages += stats.totalImages;
       skippedImages += stats.skippedImages;
     }
@@ -245,30 +245,49 @@ export default class LavaFlow {
   ): Promise<void> {
     const pageName = file.fileNameNoExt;
     const journalName = parentJournal?.name ?? pageName;
-    const journal: JournalEntry =
-      parentJournal ??
-      ((game as Game).journal?.find(
-        (j: JournalEntry) => j.name === journalName && j.folder === parentFolder,
-      ) as JournalEntry) ??
-      (await LavaFlow.createJournal(journalName, parentFolder, settings.playerObserve));
+
+    // Get the file path without the vault root folder for deterministic UUID generation
+    // This ensures the same file has the same ID regardless of vault folder name
+    const pathParts = file.originalFile.webkitRelativePath.split('/');
+    const filePath = pathParts.length > 1 ? pathParts.slice(1).join('/') : file.originalFile.webkitRelativePath;
+
+    // Try to find journal by deterministic ID first, then by name
+    let journal = null;
+    if (!parentJournal) {
+      const deterministicId = generateJournalUUID(filePath);
+      // @ts-ignore - game global
+      journal = documentExists((game as Game).journal, deterministicId)
+        ? ((game as Game).journal?.get(deterministicId) as JournalEntry)
+        : null;
+
+      // Fallback to finding by name and folder if deterministic lookup fails
+      if (!journal) {
+        // @ts-ignore - game global
+        journal = ((game as Game).journal?.find(
+          (j: JournalEntry) => j.name === journalName && j.folder === parentFolder,
+        ) as JournalEntry);
+      }
+    }
+
+    const finalJournal = journal ?? parentJournal ?? (await LavaFlow.createJournal(journalName, parentFolder, settings.playerObserve, filePath));
 
     const { body, isPublic } = await LavaFlow.parseFrontmatterAndBody(file, settings);
 
     // @ts-expect-error
-    let journalPage: JournalEntryPage = journal.pages.find((p: JournalEntryPage) => p.name === pageName) ?? null;
+    let journalPage: JournalEntryPage = finalJournal.pages.find((p: JournalEntryPage) => p.name === pageName) ?? null;
 
     if (journalPage !== null && settings.overwrite) await LavaFlow.updateJournalPage(journalPage, body);
     else if (journalPage === null || (!settings.overwrite && !settings.ignoreDuplicate))
-      journalPage = await LavaFlow.createJournalPage(pageName, body, journal);
+      journalPage = await LavaFlow.createJournalPage(pageName, body, finalJournal, filePath);
 
     // (Avoid flipping an entire combined-journal when combineNotes is on and parentJournal was provided.)
     if (isPublic && parentJournal === null) {
-      await journal.update({
+      await finalJournal.update({
         // @ts-expect-error
         ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }
       });
     } else if (!isPublic && parentJournal === null) {
-      await journal.update({
+      await finalJournal.update({
         // @ts-expect-error
         ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE }
       });
@@ -289,13 +308,7 @@ export default class LavaFlow {
     // Check if file already exists in pre-scanned map
     if (settings.skipDuplicateImages && existingImagePaths.has(file.originalFile.name)) {
       file.uploadPath = existingImagePaths.get(file.originalFile.name)!;
-      LavaFlow.log(`Skipping duplicate image: ${file.originalFile.name}`, false);
       return true; // Skipped
-    }
-
-    // Log if we're uploading (helps debug filename matching issues)
-    if (settings.skipDuplicateImages) {
-      LavaFlow.log(`Uploading new image: ${file.originalFile.name}`, false);
     }
 
     // Upload the file
@@ -324,7 +337,6 @@ export default class LavaFlow {
       }
     } catch (error: any) {
       // If browse fails, folder might not exist yet - that's okay
-      LavaFlow.log(`Could not scan for existing images in ${settings.mediaFolder}: ${error.message}`, false);
     }
 
     return { existingFiles };
@@ -338,7 +350,7 @@ export default class LavaFlow {
         await FilePicker.browse('data', settings.mediaFolder);
         return;
       } catch (error: any) {
-        LavaFlow.log(`Error accessing filepath ${settings.mediaFolder}: ${error.message}`, false);
+        // Directory doesn't exist, create it
       }
       await FilePicker.createDirectory('data', settings.mediaFolder);
     }
@@ -417,15 +429,35 @@ export default class LavaFlow {
     journalName: string,
     parentFolder: Folder | null,
     playerObserve: boolean,
+    filePath?: string,
   ): Promise<JournalEntry> {
+    // Generate deterministic UUID if file path is provided
+    let deterministicId: string | undefined;
+    if (filePath) {
+      deterministicId = generateJournalUUID(filePath);
+      console.log(`Lava Flow | createJournal called for "${journalName}" with deterministic ID: ${deterministicId}`);
+
+      // Check if a journal with this ID already exists
+      if (documentExists((game as Game).journal, deterministicId)) {
+        console.log(`Lava Flow | Journal already exists with ID: ${deterministicId}`);
+        return (game as Game).journal?.get(deterministicId) as JournalEntry;
+      }
+    } else {
+      console.log(`Lava Flow | createJournal called for "${journalName}" WITHOUT file path - will use random ID`);
+    }
+
     const entryData: JournalEntryDataConstructorData = {
+      ...(deterministicId && { _id: deterministicId }),
       name: journalName,
       folder: parentFolder?.id,
       // @ts-expect-error
       ...(playerObserve && {ownership:{default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER}})
-    };   
+    };
 
-    const entry = (await JournalEntry.create(entryData)) ?? new JournalEntry();
+    console.log(`Lava Flow | Creating journal with data:`, { ...entryData, _id: entryData._id || 'RANDOM' });
+
+    const entry = (await JournalEntry.create(entryData, { keepId: true })) ?? new JournalEntry();
+    console.log(`Lava Flow | Created journal "${journalName}" with actual ID: ${entry.id}`);
     await entry.setFlag(LavaFlow.FLAGS.SCOPE, LavaFlow.FLAGS.JOURNAL, true);
     return entry;
   }
@@ -434,15 +466,30 @@ export default class LavaFlow {
     pageName: string,
     content: string,
     journalEntry: JournalEntry,
+    filePath?: string,
   ): Promise<JournalEntry> {
+    // Generate deterministic UUID if file path is provided
+    let deterministicId: string | undefined;
+    if (filePath) {
+      deterministicId = generatePageUUID(filePath, pageName);
+
+      // Check if a page with this ID already exists in this journal
+      // @ts-expect-error
+      const existingPage = journalEntry.pages?.get(deterministicId);
+      if (existingPage) {
+        return existingPage;
+      }
+    }
+
     // @ts-expect-error
     const page = await JournalEntryPage.create(
       {
+        ...(deterministicId && { _id: deterministicId }),
         name: pageName,
         // @ts-expect-error
         text: { markdown: content, format: CONST.JOURNAL_ENTRY_PAGE_FORMATS.MARKDOWN },
       },
-      { parent: journalEntry },
+      { parent: journalEntry, keepId: true },
     );
     await page.setFlag("core","sheetClass","core.MarkdownJournalPageSheet");
     return page;
@@ -492,10 +539,7 @@ export default class LavaFlow {
 
     // optionally strip %%...%% comments
     if (settings?.stripObsidianComments) {
-      console.log('Stripping Obsidian comments from file content.');
       body = body.replace(/\%\%[\s\S]*?\%\%/g, '');
-    } else {
-      console.log('Not stripping Obsidian comments from file content.');
     }
 
     // keep your existing heading tweak

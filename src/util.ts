@@ -1,11 +1,13 @@
 import LavaFlow from './lava-flow.js';
+import { generateFolderUUID, documentExists } from './deterministic-uuid.js';
 
 export async function createOrGetFolder(
   folderName: string | null,
   parentFolderID: string | null = null,
+  folderPath: string[] = []
 ): Promise<Folder | null> {
   if (folderName == null || folderName === '') return null;
-  const folder = (await getFolder(folderName, parentFolderID)) ?? (await createFolder(folderName, parentFolderID));
+  const folder = (await getFolder(folderName, parentFolderID)) ?? (await createFolder(folderName, parentFolderID, folderPath));
   return folder;
 }
 
@@ -23,12 +25,26 @@ export async function getFolder(folderName: string, parentFolderID: string | nul
   }
 }
 
-export async function createFolder(folderName: string, parentFolderID: string | null): Promise<Folder | null> {
+export async function createFolder(
+  folderName: string,
+  parentFolderID: string | null,
+  folderPath: string[] = []
+): Promise<Folder | null> {
+  // Build the full path for this folder
+  const fullPath = [...folderPath, folderName];
+  const deterministicId = generateFolderUUID(fullPath);
+
+  // Check if a folder with this ID already exists
+  if (documentExists((game as Game).folders, deterministicId)) {
+    return (game as Game).folders?.get(deterministicId) as Folder;
+  }
+
   const folder = await Folder.create({
+    _id: deterministicId,
     name: folderName,
     type: 'JournalEntry',
     folder: parentFolderID,
-  });
+  }, { keepId: true });
   await folder?.setFlag(LavaFlow.FLAGS.SCOPE, LavaFlow.FLAGS.FOLDER, true);
   return folder ?? null;
 }
