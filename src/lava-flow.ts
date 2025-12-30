@@ -537,9 +537,9 @@ export default class LavaFlow {
     // strip YAML frontmatter
     let body = raw.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/, '');
 
-    // optionally strip %%...%% comments
+    // optionally strip :::dm...::: blocks
     if (settings?.stripObsidianComments) {
-      body = body.replace(/\%\%[\s\S]*?\%\%/g, '');
+      body = body.replace(/:::dm[\s\S]*?:::/g, '');
     }
 
     // keep your existing heading tweak

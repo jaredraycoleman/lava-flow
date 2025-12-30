@@ -63,12 +63,12 @@
     </div>
 
     <div class="form-group">
-        <label for="{{idPrefix}}stripObsidianComments">Strip Obsidian comments (%%...%%)</label>
+        <label for="{{idPrefix}}stripObsidianComments">Strip DM blocks (:::dm...:::)</label>
         <input type="checkbox"
                 id="{{idPrefix}}stripObsidianComments"
                 name="stripObsidianComments"
                 {{#if stripObsidianComments}}checked{{/if}}>
-        <p class="notes">If enabled, content inside %%…%% will be removed before import.</p>
+        <p class="notes">If enabled, content inside :::dm…::: blocks will be removed before import.</p>
     </div>
    
 

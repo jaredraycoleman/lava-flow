@@ -31,14 +31,16 @@ function hello(arg){
 Just a generic code block
 ```
 
-# Comment
-Here is some inline comments: %%You can't see this text%% (Can't see it)
+# DM Blocks
+Here is an inline dm block: :::dm
+You can't see this text
+::: (Can't see it)
 
-Here is a block comment:
-%%
+Here is a block dm section:
+:::dm
 It can span
 multiple lines
-%%
+:::
 (Can't see it)
 
 # Diagram

@@ -7,7 +7,7 @@ This module allows you to import your notes from Obsidian MD into Foundry journa
 ## Additional Features in This Fork
 
 - **Skip Duplicate Image Uploads**: Dramatically faster re-imports by checking for existing images upfront instead of uploading them again
-- **Redact Obsidian Comments**: Option to strip `%%...%%` comments during import
+- **Redact DM Blocks**: Option to strip `:::dm...:::` blocks during import
 - **Public Note Support**: Frontmatter `public: true` option to set notes as observable by players
 - Performance optimizations for large vaults
 

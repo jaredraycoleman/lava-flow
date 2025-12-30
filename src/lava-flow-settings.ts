@@ -19,5 +19,5 @@ export class LavaFlowSettings {
   combineNotes = false;
   combineNotesNoSubfolders = true;
   useTinyMCE = false;
-  stripObsidianComments: boolean = true; // or false if you prefer opt-in
+  stripObsidianComments: boolean = true; // strips :::dm blocks
 }
