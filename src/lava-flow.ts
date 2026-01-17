@@ -537,9 +537,10 @@ export default class LavaFlow {
     // strip YAML frontmatter
     let body = raw.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n)?/, '');
 
-    // optionally strip :::dm...::: blocks
+    // optionally strip DM-only callout blocks (> [!dm] format)
     if (settings?.stripObsidianComments) {
-      body = body.replace(/:::dm[\s\S]*?:::/g, '');
+      // Match callout blocks: > [!dm] followed by lines starting with >
+      body = body.replace(/^> \[!dm\].*$(\r?\n^>.*$)*/gm, '');
     }
 
     // keep your existing heading tweak
